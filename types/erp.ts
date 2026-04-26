@@ -722,3 +722,197 @@ export interface PaginatedResponse<T> {
     totalPages: number;
   };
 }
+
+// ==================== FROTA / VEÍCULOS ====================
+export type VehicleStatus = 'available' | 'in_use' | 'maintenance' | 'inactive';
+export type VehicleFuelType = 'gasoline' | 'ethanol' | 'diesel' | 'flex' | 'electric' | 'hybrid';
+export type MaintenanceType = 'preventive' | 'corrective';
+export type MaintenanceStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+export type DocumentType = 'ipva' | 'licensing' | 'insurance' | 'inspection';
+export type FineStatus = 'pending' | 'paid' | 'contested' | 'cancelled';
+
+export interface Vehicle {
+  id: string;
+  tenantId: string;
+  plate: string;
+  brand: string;
+  model: string;
+  year: number;
+  color: string;
+  chassi?: string;
+  renavam?: string;
+  fuelType: VehicleFuelType;
+  tankCapacity: number;
+  currentMileage: number;
+  status: VehicleStatus;
+  assignedDriverId?: string;
+  assignedDriver?: Driver;
+  category?: string;
+  purchaseDate?: Date;
+  purchaseValue?: number;
+  notes?: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Driver {
+  id: string;
+  tenantId: string;
+  name: string;
+  document: string;
+  cnh: string;
+  cnhCategory: string;
+  cnhExpiration: Date;
+  phone?: string;
+  email?: string;
+  address?: Address;
+  employeeId?: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Refueling {
+  id: string;
+  tenantId: string;
+  vehicleId: string;
+  vehicle?: Vehicle;
+  driverId?: string;
+  driver?: Driver;
+  date: Date;
+  mileage: number;
+  fuelType: VehicleFuelType;
+  liters: number;
+  pricePerLiter: number;
+  totalCost: number;
+  station?: string;
+  fullTank: boolean;
+  notes?: string;
+  createdAt: Date;
+}
+
+export interface VehicleMaintenance {
+  id: string;
+  tenantId: string;
+  vehicleId: string;
+  vehicle?: Vehicle;
+  type: MaintenanceType;
+  status: MaintenanceStatus;
+  description: string;
+  scheduledDate: Date;
+  completedDate?: Date;
+  mileageAtMaintenance?: number;
+  workshop?: string;
+  laborCost: number;
+  partsCost: number;
+  totalCost: number;
+  invoiceNumber?: string;
+  nextMaintenanceMileage?: number;
+  nextMaintenanceDate?: Date;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface VehicleDocument {
+  id: string;
+  tenantId: string;
+  vehicleId: string;
+  vehicle?: Vehicle;
+  type: DocumentType;
+  referenceYear: number;
+  amount: number;
+  dueDate: Date;
+  paidDate?: Date;
+  status: 'pending' | 'paid' | 'overdue';
+  documentNumber?: string;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface VehicleFine {
+  id: string;
+  tenantId: string;
+  vehicleId: string;
+  vehicle?: Vehicle;
+  driverId?: string;
+  driver?: Driver;
+  date: Date;
+  description: string;
+  infringementCode?: string;
+  location?: string;
+  amount: number;
+  discountAmount?: number;
+  dueDate: Date;
+  paidDate?: Date;
+  status: FineStatus;
+  points?: number;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ==================== COTAÇÕES AVANÇADAS ====================
+export type QuotationRequestStatus = 'draft' | 'sent' | 'in_progress' | 'completed' | 'cancelled';
+export type QuotationResponseStatus = 'pending' | 'received' | 'accepted' | 'rejected' | 'expired';
+
+export interface QuotationRequest {
+  id: string;
+  tenantId: string;
+  requestNumber: string;
+  title: string;
+  items: QuotationRequestItem[];
+  supplierIds: string[];
+  suppliers?: Supplier[];
+  responses?: QuotationResponse[];
+  deadline: Date;
+  status: QuotationRequestStatus;
+  notes?: string;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface QuotationRequestItem {
+  id: string;
+  productId?: string;
+  product?: Product;
+  description: string;
+  quantity: number;
+  unit: string;
+  specifications?: string;
+}
+
+export interface QuotationResponse {
+  id: string;
+  tenantId: string;
+  requestId: string;
+  request?: QuotationRequest;
+  supplierId: string;
+  supplier?: Supplier;
+  items: QuotationResponseItem[];
+  subtotal: number;
+  discount: number;
+  freight: number;
+  total: number;
+  deliveryDays: number;
+  paymentTerms?: string;
+  validUntil: Date;
+  status: QuotationResponseStatus;
+  notes?: string;
+  receivedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface QuotationResponseItem {
+  id: string;
+  requestItemId: string;
+  unitPrice: number;
+  total: number;
+  brand?: string;
+  deliveryDays?: number;
+  notes?: string;
+}

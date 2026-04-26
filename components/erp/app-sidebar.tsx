@@ -80,6 +80,7 @@ const navigationItems = [
       { title: "Produtos", href: "/estoque/produtos" },
       { title: "Movimentações", href: "/estoque/movimentacoes" },
       { title: "Inventário", href: "/estoque/inventario" },
+      { title: "Frota", href: "/estoque/frota" },
     ],
   },
   {
