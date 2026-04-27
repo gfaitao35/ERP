@@ -1,9 +1,18 @@
 // =====================================================
 // POSTGRESQL DATABASE CONNECTION
 // =====================================================
-// npm install pg @types/pg
+// npm install pg @types/pg @neondatabase/serverless
 
 import { Pool } from "pg";
+import { neon } from "@neondatabase/serverless";
+
+// Neon serverless client for edge/serverless functions
+export const sql = neon(process.env.DATABASE_URL!);
+
+// Helper to get tenant ID (in production, get from auth context)
+export function getTenantId(): string {
+  return "00000000-0000-0000-0000-000000000001";
+}
 
 declare global {
   // eslint-disable-next-line no-var

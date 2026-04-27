@@ -65,6 +65,7 @@ const navigationItems = [
     module: "vendas",
     items: [
       { title: "Visão Geral", href: "/vendas" },
+      { title: "CRM / Pipeline", href: "/vendas/crm" },
       { title: "Clientes", href: "/vendas/clientes" },
       { title: "Oportunidades", href: "/vendas/oportunidades" },
       { title: "Pedidos", href: "/vendas/pedidos" },
