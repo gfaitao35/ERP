@@ -14,8 +14,8 @@ import { cn } from "@/lib/utils";
 // STOCK MODULE OVERVIEW
 // =====================================================
 export default function EstoquePage() {
-  const { products } = useProducts();
-  const { stockLevels } = useStockLevels();
+  const { data: products } = useProducts();
+  const { data: stockLevels } = useStockLevels();
 
   const totalProducts = products.length;
   const activeProducts = products.filter((p) => p.isActive).length;

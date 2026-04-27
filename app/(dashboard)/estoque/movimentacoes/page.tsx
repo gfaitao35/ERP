@@ -3,13 +3,16 @@
 import { useState } from "react"
 import { useERPData } from "@/contexts/erp-data-context"
 import { PageHeader } from "@/components/erp/page-header"
-import { DataTable } from "@/components/erp/data-table"
+import { SimpleDataTable } from "@/components/erp/simple-data-table"
+import type { SimpleColumn } from "@/components/erp/simple-data-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -31,122 +34,119 @@ import {
   ArrowDownLeft,
   RefreshCw,
   Truck,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react"
-import type { StockMovement } from "@/types/erp"
+import type { StockMovement, MovementType } from "@/types/erp"
+
+const typeConfig: Record<MovementType, { label: string; badgeVariant: "default" | "destructive" | "secondary" | "outline" }> = {
+  entry:      { label: "Entrada",       badgeVariant: "default" },
+  exit:       { label: "Saída",         badgeVariant: "destructive" },
+  adjustment: { label: "Ajuste",        badgeVariant: "outline" },
+  transfer:   { label: "Transferência", badgeVariant: "secondary" },
+}
 
 export default function StockMovementsPage() {
-  const { stockMovements, products, addStockMovement } = useERPData()
+  const { stockMovements, products, addStockMovement, updateProduct } = useERPData()
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [newMovement, setNewMovement] = useState<Partial<StockMovement>>({
     productId: "",
+    warehouseId: "WH-DEFAULT",
     type: "entry",
     quantity: 0,
     unitCost: 0,
-    reason: "",
     notes: "",
   })
+
+  const totalEntradas = stockMovements.filter((m) => m.type === "entry").reduce((s, m) => s + m.quantity, 0)
+  const totalSaidas   = stockMovements.filter((m) => m.type === "exit").reduce((s, m) => s + m.quantity, 0)
+  const totalValor    = stockMovements.reduce((s, m) => s + m.totalCost, 0)
 
   const filteredMovements = stockMovements.filter((movement) => {
     const product = products.find((p) => p.id === movement.productId)
     const matchesSearch =
       product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      movement.documentNumber?.toLowerCase().includes(searchTerm.toLowerCase())
+      product?.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (movement.reference ?? "").toLowerCase().includes(searchTerm.toLowerCase())
     const matchesType = typeFilter === "all" || movement.type === typeFilter
     return matchesSearch && matchesType
   })
 
-  const handleAddMovement = () => {
-    if (newMovement.productId && newMovement.quantity) {
-      addStockMovement({
-        ...newMovement,
-        id: `MOV-${Date.now()}`,
-        tenantId: "tenant-1",
-        date: new Date().toISOString(),
-        userId: "user-1",
-        totalCost: (newMovement.quantity || 0) * (newMovement.unitCost || 0),
-        createdAt: new Date().toISOString(),
-      } as StockMovement)
-      setNewMovement({
-        productId: "",
-        type: "entry",
-        quantity: 0,
-        unitCost: 0,
-        reason: "",
-        notes: "",
-      })
-      setIsDialogOpen(false)
+  const handleAdd = () => {
+    if (!newMovement.productId || !newMovement.quantity) return
+    const totalCost = (newMovement.quantity || 0) * (newMovement.unitCost || 0)
+    addStockMovement({
+      ...newMovement,
+      id: `MOV-${Date.now()}`,
+      tenantId: "tenant-1",
+      createdBy: "user-1",
+      totalCost,
+      createdAt: new Date(),
+    } as StockMovement)
+
+    const product = products.find((p) => p.id === newMovement.productId)
+    if (product) {
+      const delta =
+        newMovement.type === "entry"       ?  (newMovement.quantity || 0)
+        : newMovement.type === "exit"      ? -(newMovement.quantity || 0)
+        : newMovement.type === "adjustment"?  (newMovement.quantity || 0)
+        : 0
+      updateProduct({ ...product, currentStock: Math.max(0, product.currentStock + delta), updatedAt: new Date() })
     }
+    setNewMovement({ productId: "", warehouseId: "WH-DEFAULT", type: "entry", quantity: 0, unitCost: 0, notes: "" })
+    setIsDialogOpen(false)
   }
 
-  const getTypeIcon = (type: StockMovement["type"]) => {
-    switch (type) {
-      case "entry":
-        return <ArrowDownLeft className="h-4 w-4 text-success" />
-      case "exit":
-        return <ArrowUpRight className="h-4 w-4 text-destructive" />
-      case "adjustment":
-        return <RefreshCw className="h-4 w-4 text-warning" />
-      case "transfer":
-        return <Truck className="h-4 w-4 text-info" />
-    }
-  }
+  const selectedProduct = products.find((p) => p.id === newMovement.productId)
+  const previewStock = selectedProduct
+    ? newMovement.type === "entry"        ? selectedProduct.currentStock + (newMovement.quantity || 0)
+    : newMovement.type === "exit"         ? selectedProduct.currentStock - (newMovement.quantity || 0)
+    : newMovement.type === "adjustment"   ? selectedProduct.currentStock + (newMovement.quantity || 0)
+    : selectedProduct.currentStock
+    : 0
 
-  const getTypeLabel = (type: StockMovement["type"]) => {
-    const labels = {
-      entry: "Entrada",
-      exit: "Saída",
-      adjustment: "Ajuste",
-      transfer: "Transferência",
-    }
-    return labels[type]
-  }
-
-  const columns = [
+  const columns: SimpleColumn<StockMovement>[] = [
     {
-      key: "date",
-      label: "Data",
+      key: "createdAt",
+      label: "Data/Hora",
       sortable: true,
-      render: (value: string) =>
-        new Date(value).toLocaleDateString("pt-BR", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
+      render: (value) =>
+        new Date(value as Date).toLocaleDateString("pt-BR", {
+          day: "2-digit", month: "2-digit", year: "numeric",
+          hour: "2-digit", minute: "2-digit",
         }),
     },
     {
       key: "type",
       label: "Tipo",
       sortable: true,
-      render: (value: StockMovement["type"]) => (
-        <div className="flex items-center gap-2">
-          {getTypeIcon(value)}
-          <Badge
-            variant={
-              value === "entry"
-                ? "default"
-                : value === "exit"
-                  ? "destructive"
-                  : "secondary"
-            }
-          >
-            {getTypeLabel(value)}
-          </Badge>
-        </div>
-      ),
+      render: (value) => {
+        const type = value as MovementType
+        const icons: Record<MovementType, React.ReactNode> = {
+          entry:      <ArrowDownLeft className="h-4 w-4 text-green-500" />,
+          exit:       <ArrowUpRight  className="h-4 w-4 text-red-500" />,
+          adjustment: <RefreshCw     className="h-4 w-4 text-amber-500" />,
+          transfer:   <Truck         className="h-4 w-4 text-blue-500" />,
+        }
+        return (
+          <div className="flex items-center gap-2">
+            {icons[type]}
+            <Badge variant={typeConfig[type].badgeVariant}>{typeConfig[type].label}</Badge>
+          </div>
+        )
+      },
     },
     {
       key: "productId",
       label: "Produto",
-      render: (value: string) => {
-        const product = products.find((p) => p.id === value)
+      render: (value) => {
+        const product = products.find((p) => p.id === (value as string))
         return (
           <div>
-            <p className="font-medium">{product?.name || "Produto não encontrado"}</p>
-            <p className="text-xs text-muted-foreground">{product?.sku}</p>
+            <p className="font-medium">{product?.name || "—"}</p>
+            <p className="text-xs text-muted-foreground font-mono">{product?.sku}</p>
           </div>
         )
       },
@@ -155,13 +155,12 @@ export default function StockMovementsPage() {
       key: "quantity",
       label: "Quantidade",
       sortable: true,
-      render: (value: number, row: StockMovement) => {
+      render: (value, row) => {
         const product = products.find((p) => p.id === row.productId)
-        const isPositive = row.type === "entry"
+        const isPositive = row.type === "entry" || row.type === "adjustment"
         return (
-          <span className={isPositive ? "text-success" : "text-destructive"}>
-            {isPositive ? "+" : "-"}
-            {value} {product?.unit || "UN"}
+          <span className={isPositive ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>
+            {isPositive ? "+" : "-"}{value as number} {product?.unit || "UN"}
           </span>
         )
       },
@@ -169,30 +168,30 @@ export default function StockMovementsPage() {
     {
       key: "unitCost",
       label: "Custo Unit.",
-      render: (value: number) =>
-        value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+      render: (value) =>
+        (value as number) > 0
+          ? (value as number).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+          : "—",
     },
     {
       key: "totalCost",
       label: "Custo Total",
       sortable: true,
-      render: (value: number) =>
-        value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+      render: (value) =>
+        (value as number) > 0
+          ? (value as number).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+          : "—",
     },
     {
-      key: "reason",
-      label: "Motivo",
-      render: (value: string) => value || "-",
+      key: "reference",
+      label: "Referência",
+      render: (value) =>
+        value ? <span className="font-mono text-xs bg-muted px-2 py-1 rounded">{value as string}</span> : "—",
     },
     {
-      key: "documentNumber",
-      label: "Documento",
-      render: (value: string) =>
-        value ? (
-          <span className="font-mono text-xs bg-muted px-2 py-1 rounded">{value}</span>
-        ) : (
-          "-"
-        ),
+      key: "notes",
+      label: "Observações",
+      render: (value) => <span className="text-sm text-muted-foreground">{(value as string) || "—"}</span>,
     },
   ]
 
@@ -200,7 +199,7 @@ export default function StockMovementsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Movimentações de Estoque"
-        description="Histórico de entradas, saídas e ajustes"
+        description="Histórico de entradas, saídas, ajustes e transferências"
         icon={<ArrowUpDown className="h-6 w-6" />}
         actions={
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -210,46 +209,44 @@ export default function StockMovementsPage() {
                 Nova Movimentação
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>Nova Movimentação</DialogTitle>
+                <DialogTitle>Nova Movimentação de Estoque</DialogTitle>
+                <DialogDescription>Registre uma entrada, saída, ajuste ou transferência</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <FieldGroup>
                   <Field>
-                    <FieldLabel>Tipo de Movimentação</FieldLabel>
+                    <FieldLabel>Tipo *</FieldLabel>
                     <Select
                       value={newMovement.type}
-                      onValueChange={(value) =>
-                        setNewMovement({ ...newMovement, type: value as StockMovement["type"] })
-                      }
+                      onValueChange={(v) => setNewMovement({ ...newMovement, type: v as MovementType })}
                     >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="entry">Entrada</SelectItem>
-                        <SelectItem value="exit">Saída</SelectItem>
-                        <SelectItem value="adjustment">Ajuste</SelectItem>
-                        <SelectItem value="transfer">Transferência</SelectItem>
+                        <SelectItem value="entry">📥 Entrada</SelectItem>
+                        <SelectItem value="exit">📤 Saída</SelectItem>
+                        <SelectItem value="adjustment">🔄 Ajuste</SelectItem>
+                        <SelectItem value="transfer">🚚 Transferência</SelectItem>
                       </SelectContent>
                     </Select>
                   </Field>
                 </FieldGroup>
                 <FieldGroup>
                   <Field>
-                    <FieldLabel>Produto</FieldLabel>
+                    <FieldLabel>Produto *</FieldLabel>
                     <Select
                       value={newMovement.productId}
-                      onValueChange={(value) => setNewMovement({ ...newMovement, productId: value })}
+                      onValueChange={(v) => {
+                        const prod = products.find((p) => p.id === v)
+                        setNewMovement({ ...newMovement, productId: v, unitCost: prod?.costPrice || 0 })
+                      }}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione um produto" />
-                      </SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Selecione um produto" /></SelectTrigger>
                       <SelectContent>
-                        {products.map((product) => (
-                          <SelectItem key={product.id} value={product.id}>
-                            {product.name} ({product.sku})
+                        {products.filter((p) => p.isActive).map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name} ({p.sku}) — {p.currentStock} {p.unit}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -259,16 +256,11 @@ export default function StockMovementsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <FieldGroup>
                     <Field>
-                      <FieldLabel>Quantidade</FieldLabel>
+                      <FieldLabel>Quantidade *</FieldLabel>
                       <Input
-                        type="number"
-                        value={newMovement.quantity}
-                        onChange={(e) =>
-                          setNewMovement({
-                            ...newMovement,
-                            quantity: parseInt(e.target.value) || 0,
-                          })
-                        }
+                        type="number" min="1"
+                        value={newMovement.quantity || ""}
+                        onChange={(e) => setNewMovement({ ...newMovement, quantity: parseInt(e.target.value) || 0 })}
                         placeholder="0"
                       />
                     </Field>
@@ -277,15 +269,9 @@ export default function StockMovementsPage() {
                     <Field>
                       <FieldLabel>Custo Unitário</FieldLabel>
                       <Input
-                        type="number"
-                        step="0.01"
-                        value={newMovement.unitCost}
-                        onChange={(e) =>
-                          setNewMovement({
-                            ...newMovement,
-                            unitCost: parseFloat(e.target.value) || 0,
-                          })
-                        }
+                        type="number" step="0.01" min="0"
+                        value={newMovement.unitCost || ""}
+                        onChange={(e) => setNewMovement({ ...newMovement, unitCost: parseFloat(e.target.value) || 0 })}
                         placeholder="0,00"
                       />
                     </Field>
@@ -293,11 +279,11 @@ export default function StockMovementsPage() {
                 </div>
                 <FieldGroup>
                   <Field>
-                    <FieldLabel>Motivo</FieldLabel>
+                    <FieldLabel>Referência / Documento</FieldLabel>
                     <Input
-                      value={newMovement.reason}
-                      onChange={(e) => setNewMovement({ ...newMovement, reason: e.target.value })}
-                      placeholder="Ex: Compra, Venda, Ajuste de inventário..."
+                      value={newMovement.reference || ""}
+                      onChange={(e) => setNewMovement({ ...newMovement, reference: e.target.value })}
+                      placeholder="NF-001, PO-123…"
                     />
                   </Field>
                 </FieldGroup>
@@ -305,39 +291,61 @@ export default function StockMovementsPage() {
                   <Field>
                     <FieldLabel>Observações</FieldLabel>
                     <Textarea
-                      value={newMovement.notes}
+                      value={newMovement.notes || ""}
                       onChange={(e) => setNewMovement({ ...newMovement, notes: e.target.value })}
-                      placeholder="Informações adicionais..."
-                      rows={3}
+                      rows={2}
                     />
                   </Field>
                 </FieldGroup>
+                {selectedProduct && (newMovement.quantity || 0) > 0 && (
+                  <div className="rounded-lg bg-muted p-3 text-sm space-y-1">
+                    <p className="text-muted-foreground font-medium">Prévia:</p>
+                    <p>Custo total: <span className="font-semibold">{((newMovement.quantity || 0) * (newMovement.unitCost || 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span></p>
+                    <p className={previewStock < selectedProduct.minStock ? "text-red-600 font-semibold" : "text-green-600 font-semibold"}>
+                      Estoque resultante: {previewStock} {selectedProduct.unit}
+                      {previewStock < selectedProduct.minStock && " ⚠️ Abaixo do mínimo!"}
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancelar
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                <Button onClick={handleAdd} disabled={!newMovement.productId || !newMovement.quantity}>
+                  Registrar
                 </Button>
-                <Button onClick={handleAddMovement}>Registrar Movimentação</Button>
               </div>
             </DialogContent>
           </Dialog>
         }
       />
 
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card><CardContent className="p-4 flex items-center gap-3">
+          <div className="rounded-lg p-2 bg-green-500/10"><TrendingUp className="h-5 w-5 text-green-500" /></div>
+          <div><p className="text-sm text-muted-foreground">Total Entradas</p><p className="text-xl font-bold text-green-600">{totalEntradas.toLocaleString("pt-BR")} un</p></div>
+        </CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3">
+          <div className="rounded-lg p-2 bg-red-500/10"><TrendingDown className="h-5 w-5 text-red-500" /></div>
+          <div><p className="text-sm text-muted-foreground">Total Saídas</p><p className="text-xl font-bold text-red-600">{totalSaidas.toLocaleString("pt-BR")} un</p></div>
+        </CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3">
+          <div className="rounded-lg p-2 bg-blue-500/10"><ArrowUpDown className="h-5 w-5 text-blue-500" /></div>
+          <div><p className="text-sm text-muted-foreground">Valor Movimentado</p><p className="text-xl font-bold">{totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", notation: "compact" })}</p></div>
+        </CardContent></Card>
+      </div>
+
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por produto ou documento..."
+            placeholder="Buscar por produto, SKU ou referência…"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
           />
         </div>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Tipo" />
-          </SelectTrigger>
+          <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os Tipos</SelectItem>
             <SelectItem value="entry">Entradas</SelectItem>
@@ -348,7 +356,7 @@ export default function StockMovementsPage() {
         </Select>
       </div>
 
-      <DataTable data={filteredMovements} columns={columns} searchable={false} />
+      <SimpleDataTable data={filteredMovements} columns={columns} />
     </div>
   )
 }
